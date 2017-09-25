@@ -18,7 +18,17 @@
 typedef struct {
   int socket;
   LIBSSH2_SESSION *session;
+  const char *fingerprint;
 } luassh_userdata_t;
+
+static void _formatFingerprint(char *str, unsigned char *fingerprint, int length) {
+  int i;
+  char *f = str;
+  for(i = 0; i < (length * 3); i = i + 3, ++fingerprint) {
+    sprintf(&str[i], "%02X:", *fingerprint);
+  }
+  str[i - 1] = '\0';
+}
 
 static int luassh_open(lua_State *L) {
   char *hostname, *port;
@@ -89,6 +99,7 @@ static int luassh_open(lua_State *L) {
     }
   }
 
+  lssh->fingerprint = libssh2_hostkey_hash(lssh->session, LIBSSH2_HOSTKEY_HASH_SHA1);
   luaL_getmetatable(L, "sshmeta");
   lua_setmetatable(L, -2);
   return 1;
@@ -107,8 +118,19 @@ static int sshmeta_close(lua_State *L) {
   return 0;
 }
 
+static int sshmeta_hostKeyHash(lua_State *L) {
+  luassh_userdata_t * lssh;
+  unsigned char fingerprint[60];
+
+  lssh = (luassh_userdata_t *) luaL_checkudata(L, 1, "sshmeta");
+  _formatFingerprint(fingerprint, (unsigned char *) lssh->fingerprint, 20);
+  lua_pushstring(L, fingerprint);
+  return 1;
+}
+
 static const struct luaL_Reg sshmeta_methods[] = {
   { "__gc", sshmeta_close },
+  { "hostKeyHash", sshmeta_hostKeyHash },
   { NULL, NULL }
 };
 
