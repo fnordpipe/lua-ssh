@@ -30,6 +30,64 @@ static void _formatFingerprint(char *str, unsigned char *fingerprint, int length
   str[i - 1] = '\0';
 }
 
+static int _sendFile(lua_State *L, LIBSSH2_SESSION *session, char *src, char *dest, struct stat finfo) {
+  FILE *fd;
+  char mem[1024];
+  size_t nread;
+  size_t nwrote;
+  char *ptr;
+  LIBSSH2_CHANNEL *channel;
+
+  channel = libssh2_scp_send(
+    session, dest,
+    finfo.st_mode & 0777,
+    (unsigned long) finfo.st_size);
+
+  if(!channel) {
+    lua_pushnil(L);
+    lua_pushstring(L, "unable to open a ssh channel");
+    return 2;
+  } else {
+    fd = fopen(src, "rb");
+    if(!fd) {
+      lua_pushnil(L);
+      lua_pushstring(L, "cannot read src file");
+      return 2;
+    } else {
+      do {
+        nread = fread(mem, 1, sizeof(mem), fd);
+        if(nread <= 0) {
+          fclose(fd);
+          libssh2_channel_send_eof(channel);
+          libssh2_channel_wait_eof(channel);
+          libssh2_channel_wait_closed(channel);
+          libssh2_channel_free(channel);
+          lua_pushboolean(L, true);
+          return 1;
+        }
+        ptr = mem;
+
+        do {
+          nwrote = libssh2_channel_write(channel, ptr, nread);
+          if(nwrote < 0) {
+            fclose(fd);
+            libssh2_channel_send_eof(channel);
+            libssh2_channel_wait_eof(channel);
+            libssh2_channel_wait_closed(channel);
+            libssh2_channel_free(channel);
+            lua_pushnil(L);
+            lua_pushstring(L, "error writing file");
+            return 2;
+          } else {
+            ptr += nwrote;
+            nread -= nwrote;
+          }
+        } while(nread);
+      } while(1);
+    }
+  }
+}
+
 static int luassh_open(lua_State *L) {
   char *hostname, *port;
   struct addrinfo hints, *res, *resSave;
@@ -128,6 +186,23 @@ static int sshmeta_hostKeyHash(lua_State *L) {
   return 1;
 }
 
+static int sshmeta_scpSend(lua_State *L) {
+  luassh_userdata_t *lssh;
+  char *src, *dest;
+  struct stat finfo;
+  lssh = (luassh_userdata_t *) luaL_checkudata(L, 1, "sshmeta");
+  src = (char *) luaL_checkstring(L, 2);
+  dest = (char *) luaL_checkstring(L, 3);
+
+  if(stat(src, &finfo) < 0) {
+    lua_pushnil(L);
+    lua_pushstring(L, "no such file");
+    return 2;
+  } else {
+    return _sendFile(L, lssh->session, src, dest, finfo);
+  }
+}
+
 static int sshmeta_userAuthPassword(lua_State *L) {
   luassh_userdata_t *lssh;
   char *username, *password;
@@ -145,6 +220,7 @@ static int sshmeta_userAuthPassword(lua_State *L) {
 static const struct luaL_Reg sshmeta_methods[] = {
   { "__gc", sshmeta_close },
   { "hostKeyHash", sshmeta_hostKeyHash },
+  { "scpSend", sshmeta_scpSend },
   { "userAuthPassword", sshmeta_userAuthPassword },
   { NULL, NULL }
 };
