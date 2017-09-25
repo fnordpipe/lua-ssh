@@ -119,7 +119,7 @@ static int sshmeta_close(lua_State *L) {
 }
 
 static int sshmeta_hostKeyHash(lua_State *L) {
-  luassh_userdata_t * lssh;
+  luassh_userdata_t *lssh;
   unsigned char fingerprint[60];
 
   lssh = (luassh_userdata_t *) luaL_checkudata(L, 1, "sshmeta");
@@ -128,9 +128,24 @@ static int sshmeta_hostKeyHash(lua_State *L) {
   return 1;
 }
 
+static int sshmeta_userAuthPassword(lua_State *L) {
+  luassh_userdata_t *lssh;
+  char *username, *password;
+  lssh = (luassh_userdata_t *) luaL_checkudata(L, 1, "sshmeta");
+  username = (char *) luaL_checkstring(L, 2);
+  password = (char *) luaL_checkstring(L, 3);
+
+  if(libssh2_userauth_password(lssh->session, username, password)) {
+    lua_pushnil(L);
+    lua_pushstring(L, "authentication error");
+    return 2;
+  }
+}
+
 static const struct luaL_Reg sshmeta_methods[] = {
   { "__gc", sshmeta_close },
   { "hostKeyHash", sshmeta_hostKeyHash },
+  { "userAuthPassword", sshmeta_userAuthPassword },
   { NULL, NULL }
 };
 
