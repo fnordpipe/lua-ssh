@@ -13,7 +13,7 @@ endif
 all: ssh.so
 
 ssh.so:
-	${CC} ${CFLAGS} ${INC} ${LDFLAGS} -o ssh.so src/ssh.c
+	${CC} -o ssh.so src/ssh.c ${CFLAGS} ${INC} ${LDFLAGS}
 
 clean:
 	rm -f ssh.so
